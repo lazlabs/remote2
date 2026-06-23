@@ -2230,7 +2230,7 @@ body.kiosk-active .kiosk-return-overlay.show{display:flex}
         <div class="settings-group-label">Home Assistant</div>
         <div class="field">
           <label>HA URL</label>
-          <input type="url" id="cfgHaUrl" placeholder="http://homeassistant.local:8123" autocomplete="off">
+          <input type="url" id="cfgHaUrl" placeholder="http://10.0.0.51:8123" autocomplete="off">
         </div>
         <div class="field">
           <label>Long-Lived Access Token <button class="help-trigger" onclick="openCtxHelp('token')" aria-label="Help creating a token">?</button></label>
@@ -3086,7 +3086,7 @@ body.kiosk-active .kiosk-return-overlay.show{display:flex}
 // ══════════════════════════════════════════════════════════════════
 const BACKEND_CONFIG = {
   haUrl:        "http://192.168.1.XX:8123",   // ← Replace with your HA local IP
-  haToken:      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJiYTU4NDFhYzFhNTM0MzM1YTQwZjA4YjRmNTNiOWQ5YyIsImlhdCI6MTc4MjE0MjcwOCwiZXhwIjoyMDk3NTAyNzA4fQ.SK01fMCLhqzw20ZC6O-HyU7ebk3CoXyQx5SQuAvm9MM",
+  haToken:      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjNmE4MzIxN2MzMGE0YzhiYWQyNGE3Y2M0ZjU3YjA4NyIsImlhdCI6MTc4MjI0NjgyMSwiZXhwIjoyMDk3NjA2ODIxfQ.zggIUzVhsEDE5JCMf6rYVgDmnkPom5wpM2h3zRO5FOQ",
   sonosEntity:  "media_player.sonos_soundbar",
   yamahaEntity: "media_player.yamaha_receiver",
   tvEntity:     "media_player.tcl_tv",
@@ -3109,11 +3109,15 @@ const _ENTITY_MAP = {
   tv:'tvEntity', firetv:'fireTvEntity', lights:'lightsEntity',
 };
 function cfg(k) {
-  if(k === 'haUrl')           return BACKEND_CONFIG.haUrl;
-  if(k === 'haToken')         return BACKEND_CONFIG.haToken;
-  if(_ENTITY_MAP[k])          return BACKEND_CONFIG[_ENTITY_MAP[k]];
-  if(_LOCAL_KEYS.includes(k)) return localStorage.getItem('mr_'+k) || BACKEND_CONFIG[k] || '';
-  return localStorage.getItem('mr_'+k) || '';
+  // localStorage always wins — Settings UI overrides baked BACKEND_CONFIG values
+  const stored = localStorage.getItem('mr_' + k);
+  if(stored) return stored;
+  // Fall back to BACKEND_CONFIG
+  if(k === 'haUrl')   return BACKEND_CONFIG.haUrl;
+  if(k === 'haToken') return BACKEND_CONFIG.haToken;
+  if(_ENTITY_MAP[k])  return BACKEND_CONFIG[_ENTITY_MAP[k]];
+  if(BACKEND_CONFIG[k] !== undefined) return BACKEND_CONFIG[k];
+  return '';
 }
 
 const state = {
