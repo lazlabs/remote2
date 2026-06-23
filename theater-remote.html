@@ -2421,6 +2421,10 @@ body.kiosk-active .kiosk-return-overlay.show{display:flex}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             install-agent.bat
           </button>
+          <button class="io-btn" onclick="downloadEmbeddedFile('uninstall-agent.bat')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            uninstall-agent.bat
+          </button>
         </div>
 
         <!-- HA Automations -->
@@ -3138,6 +3142,7 @@ function _abortAfter(ms) {
 }
 
 async function haService(service, data={}) {
+  dbg(`haService: ${service} ${JSON.stringify(data)}`, 'info');
   const [d,s] = service.split('/');
   const r = await fetch(`${cfg('haUrl')}/api/services/${d}/${s}`, {
     method:'POST',
@@ -3826,6 +3831,13 @@ function saveSettings() {
 }
 
 function openSettingsFields() {
+  // Auto-open diagnostics so debug log is immediately visible
+  const diagFields = document.getElementById('diagFields');
+  const diagChevron = document.getElementById('diagChevron');
+  if(diagFields && !diagFields.classList.contains('open')) {
+    diagFields.classList.add('open');
+    if(diagChevron) diagChevron.classList.add('open');
+  }
   for(const [id,key] of Object.entries(FIELD_MAP)) {
     const el = document.getElementById(id);
     if(el) el.value = cfg(key);
@@ -4768,6 +4780,60 @@ ipconfig | findstr /i "IPv4"
 echo.
 pause
 `,
+  'uninstall-agent.bat': `@echo off
+:: ═══════════════════════════════════════════════════════════════════
+::  Movie Room Remote — PC Agent Uninstaller
+::  LAZLAB Creations
+:: ═══════════════════════════════════════════════════════════════════
+
+title Movie Room — PC Agent Uninstaller
+setlocal EnableDelayedExpansion
+
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Run as Administrator required.
+    pause & exit /b 1
+)
+
+set AGENT_NAME=MovieRoomPCAgent
+set AGENT_DIR=%~dp0
+set NSSM_EXE=%AGENT_DIR%nssm\nssm.exe
+
+echo.
+echo  Stopping and removing Movie Room PC Agent...
+echo.
+
+:: Stop and remove NSSM service if present
+if exist "%NSSM_EXE%" (
+    "%NSSM_EXE%" stop %AGENT_NAME% >nul 2>&1
+    "%NSSM_EXE%" remove %AGENT_NAME% confirm >nul 2>&1
+    echo  Service removed (NSSM)
+)
+
+:: Remove Task Scheduler entry
+schtasks /delete /tn "%AGENT_NAME%" /f >nul 2>&1
+echo  Scheduled task removed
+
+:: Kill any running python process running the agent
+for /f "tokens=2" %%i in ('tasklist /fi "imagename eq python.exe" /fo list ^| findstr /i "PID"') do (
+    wmic process %%i get CommandLine 2>nul | findstr /i "pc-agent" >nul
+    if !errorlevel! equ 0 taskkill /pid %%i /f >nul 2>&1
+)
+for /f "tokens=2" %%i in ('tasklist /fi "imagename eq pythonw.exe" /fo list ^| findstr /i "PID"') do (
+    taskkill /pid %%i /f >nul 2>&1
+)
+
+:: Remove firewall rule
+netsh advfirewall firewall delete rule name="%AGENT_NAME%" >nul 2>&1
+echo  Firewall rule removed
+
+echo.
+echo  Done. PC Agent has been fully uninstalled.
+echo.
+pause
+exit /b 0
+
+`
 };
 
 function downloadEmbeddedFile(filename) {
