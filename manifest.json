@@ -1,0 +1,27 @@
+{
+  "name": "Movie Room Remote",
+  "short_name": "Movie Room",
+  "description": "LAZLAB Creations — Theater remote control for Home Assistant",
+  "start_url": "./theater-remote.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0C0C12",
+  "theme_color": "#0C0C12",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities"],
+  "lang": "en-US"
+}

@@ -1,0 +1,17 @@
+{
+  "_app": "movie-room-remote",
+  "_v": 3,
+  "_note": "Token excluded for security — paste it manually into Settings after importing this file.",
+  "_exported": "2026-06-23T00:00:00.000Z",
+  "haUrl": "http://homeassistant.local:8123",
+  "sonos": "media_player.sonos_soundbar",
+  "yamaha": "media_player.yamaha_receiver",
+  "tv": "media_player.tcl_tv",
+  "firetv": "media_player.fire_tv",
+  "lights": "light.movie_room",
+  "kodiUrl": "http://192.168.1.100:8080/jsonrpc",
+  "kodiUser": "",
+  "kodiPass": "",
+  "kodiLib": "",
+  "pcAgent": "http://192.168.1.100:9876"
+}

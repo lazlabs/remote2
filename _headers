@@ -1,0 +1,20 @@
+# Netlify / GitHub Pages headers
+# Enables Chrome private network access for local HA calls
+
+/*
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Private-Network: true
+  Access-Control-Allow-Methods: GET, POST, OPTIONS
+  Access-Control-Allow-Headers: Content-Type, Authorization
+
+/*.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.json
+  Cache-Control: no-cache
+
+/*.svg
+  Cache-Control: public, max-age=604800

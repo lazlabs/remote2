@@ -1,0 +1,137 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  LAZLAB CREATIONS — Movie Room Remote  ·  Home Assistant Script Definitions
+#  Paste each block into: Settings → Automations & Scenes → Scripts
+#  Or add to your scripts.yaml / packages file.
+#
+#  Entities referenced (must match your BACKEND_CONFIG in theater-remote.html):
+#    media_player.tcl_tv            → tvEntity
+#    media_player.yamaha_receiver   → yamahaEntity
+#    media_player.sonos_soundbar    → sonosEntity
+#    light.movie_room               → lightsEntity
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ─── SCRIPT 1: CASUAL TV MODE ──────────────────────────────────────────────
+# Triggered by the Movie Room Remote when "Casual TV" is tapped.
+# Turns on the TV, switches to HDMI 1 (Fire TV / eARC), turns the Yamaha
+# receiver OFF (Sonos handles audio via eARC), and sets Sonos volume to 40%.
+script:
+  casual_tv_mode:
+    alias: "Movie Room — Casual TV Mode"
+    description: >
+      Activates casual TV watching: TV on, HDMI 1, Yamaha off, Sonos at 40%.
+      Called by the Movie Room Remote PWA via script/turn_on.
+    icon: mdi:television-play
+    mode: single
+    sequence:
+
+      # 1. Power on the TCL TV
+      - service: media_player.turn_on
+        target:
+          entity_id: media_player.tcl_tv
+
+      # 2. Wait for the TV to be ready before switching input
+      - delay:
+          seconds: 2
+
+      # 3. Switch TV input to HDMI 1 (Fire TV)
+      - service: media_player.select_source
+        target:
+          entity_id: media_player.tcl_tv
+        data:
+          source: "HDMI 1"
+
+      # 4. Turn the Yamaha receiver OFF — Sonos handles audio via eARC
+      - service: media_player.turn_off
+        target:
+          entity_id: media_player.yamaha_receiver
+
+      # 5. Set Sonos soundbar to 40% volume
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.sonos_soundbar
+        data:
+          volume_level: 0.40
+
+
+# ─── SCRIPT 2: MOVIE NIGHT MODE ────────────────────────────────────────────
+# Triggered by the Movie Room Remote when "Movie Night" is tapped.
+# Turns on TV, switches to HDMI 2 (PC / Yamaha source), powers up the Yamaha
+# 7.2 receiver, pauses/mutes the Sonos soundbar, and smoothly dims the room
+# lights to 10% for a cinematic atmosphere.
+  movie_night_mode:
+    alias: "Movie Room — Movie Night Mode"
+    description: >
+      Activates full cinema mode: TV on, HDMI 2, Yamaha on, Sonos paused,
+      lights dimmed to 10%. Called by the Movie Room Remote PWA.
+    icon: mdi:movie-play
+    mode: single
+    sequence:
+
+      # 1. Power on the TCL TV
+      - service: media_player.turn_on
+        target:
+          entity_id: media_player.tcl_tv
+
+      # 2. Wait for the TV to initialise before switching input
+      - delay:
+          seconds: 2
+
+      # 3. Switch TV input to HDMI 2 (Yamaha / Gaming PC source)
+      - service: media_player.select_source
+        target:
+          entity_id: media_player.tcl_tv
+        data:
+          source: "HDMI 2"
+
+      # 4. Power on the Yamaha 7.2 surround receiver
+      - service: media_player.turn_on
+        target:
+          entity_id: media_player.yamaha_receiver
+
+      # 5. Pause the Sonos soundbar — Yamaha is now handling audio
+      - service: media_player.media_pause
+        target:
+          entity_id: media_player.sonos_soundbar
+
+      # 6. Dim the room lights to 10% with a smooth 3-second transition
+      - service: light.turn_on
+        target:
+          entity_id: light.movie_room
+        data:
+          brightness_pct: 10
+          transition: 3
+
+
+# ─── SCRIPT 3: THEATER POWER OFF ───────────────────────────────────────────
+# Triggered by the Movie Room Remote "Power Off" quick button.
+# Turns off the TV, Yamaha receiver, and Sonos soundbar simultaneously,
+# then brings the room lights back up to 100% brightness.
+  theater_power_off:
+    alias: "Movie Room — Theater Power Off"
+    description: >
+      Powers everything off and restores lights. Called by the Movie Room
+      Remote PWA power-off button via script/turn_on.
+    icon: mdi:power-off
+    mode: single
+    sequence:
+
+      # 1. Turn off all three media devices in parallel
+      - parallel:
+          - service: media_player.turn_off
+            target:
+              entity_id: media_player.tcl_tv
+          - service: media_player.turn_off
+            target:
+              entity_id: media_player.yamaha_receiver
+          - service: media_player.turn_off
+            target:
+              entity_id: media_player.sonos_soundbar
+
+      # 2. Bring room lights back to full brightness with a gentle 2-second fade
+      - service: light.turn_on
+        target:
+          entity_id: light.movie_room
+        data:
+          brightness_pct: 100
+          transition: 2
