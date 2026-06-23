@@ -3145,14 +3145,32 @@ function _abortAfter(ms) {
   return c.signal;
 }
 
+// haFetch — routes all HA calls through PC agent proxy to avoid CORS.
+// Falls back to direct HA call if PC agent URL is not configured.
+function haFetch(path, method='GET', body=null) {
+  const proxy = cfg('pcAgent');
+  const token = cfg('haToken');
+  const hasProxy = proxy && !proxy.includes('192.168.1.100') && !proxy.includes('PASTE_');
+  if(hasProxy) {
+    dbg(`haFetch via proxy: ${method} ${path}`, 'info');
+    return fetch(`${proxy}/ha${path}`, {
+      method,
+      headers: {'Content-Type':'application/json','X-HA-Token': token},
+      body: body !== null ? JSON.stringify(body) : undefined,
+    });
+  }
+  dbg(`haFetch direct: ${method} ${cfg('haUrl')}${path}`, 'info');
+  return fetch(`${cfg('haUrl')}${path}`, {
+    method,
+    headers: {'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
+    body: body !== null ? JSON.stringify(body) : undefined,
+  });
+}
+
 async function haService(service, data={}) {
   dbg(`haService: ${service} ${JSON.stringify(data)}`, 'info');
   const [d,s] = service.split('/');
-  const r = await fetch(`${cfg('haUrl')}/api/services/${d}/${s}`, {
-    method:'POST',
-    headers:{'Authorization':`Bearer ${cfg('haToken')}`,'Content-Type':'application/json'},
-    body:JSON.stringify(data),
-  });
+  const r = await haFetch(`/api/services/${d}/${s}`, 'POST', data);
   if(!r.ok) throw new Error(r.status);
   return r.json().catch(()=>({}));
 }
@@ -3160,9 +3178,7 @@ async function haService(service, data={}) {
 // haWebhook() removed — modes now trigger HA scripts via haService()
 
 async function haState(entity) {
-  const r = await fetch(`${cfg('haUrl')}/api/states/${entity}`,{
-    headers:{'Authorization':`Bearer ${cfg('haToken')}`},
-  });
+  const r = await haFetch(`/api/states/${entity}`);
   if(!r.ok) throw new Error(r.status);
   return r.json();
 }
@@ -4504,7 +4520,25 @@ import sys
 import threading
 import time
 
-PORT = int(os.environ.get('PC_AGENT_PORT', 9876))
+PORT     = int(os.environ.get('PC_AGENT_PORT', 9876))
+HA_URL   = os.environ.get('HA_URL',   'http://10.0.0.51:8123')
+HA_TOKEN = os.environ.get('HA_TOKEN', '')
+
+import urllib.request, urllib.error
+
+def ha_proxy(path, method='GET', body=None, token=None):
+    url = HA_URL + path
+    tok = token or HA_TOKEN
+    headers = {'Authorization': f'Bearer {tok}', 'Content-Type': 'application/json'}
+    data = body.encode() if isinstance(body, str) else body
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except Exception as e:
+        return 502, json.dumps({'error': str(e)}).encode()
 
 # ── APP COMMANDS ────────────────────────────────────────────────────────────
 # Map command strings (sent from the remote) to what actually runs on Windows.
@@ -4559,23 +4593,43 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-HA-Token')
         self.end_headers()
 
     def do_GET(self):
         if self.path == '/ping':
             self.send_json(200, {'status': 'ok', 'agent': 'movie-room-pc-agent', 'version': '1.0'})
+        elif self.path.startswith('/ha/'):
+            tok = self.headers.get('X-HA-Token', '')
+            status, body = ha_proxy(self.path[3:], 'GET', token=tok)
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self.send_json(404, {'error': 'not found'})
 
     def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        raw = self.rfile.read(length)
+
+        if self.path.startswith('/ha/'):
+            tok = self.headers.get('X-HA-Token', '')
+            status, body = ha_proxy(self.path[3:], 'POST', raw.decode(), token=tok)
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if self.path != '/run':
             self.send_json(404, {'error': 'not found'})
             return
 
-        length = int(self.headers.get('Content-Length', 0))
         try:
-            body = json.loads(self.rfile.read(length))
+            body = json.loads(raw)
             command = body.get('command', '').strip()
         except Exception:
             self.send_json(400, {'error': 'invalid json'})

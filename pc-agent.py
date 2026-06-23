@@ -21,24 +21,42 @@ import sys
 import threading
 import time
 
-PORT = int(os.environ.get('PC_AGENT_PORT', 9876))
+PORT     = int(os.environ.get('PC_AGENT_PORT', 9876))
+HA_URL   = os.environ.get('HA_URL',   'http://10.0.0.51:8123')
+HA_TOKEN = os.environ.get('HA_TOKEN', '')
+
+import urllib.request, urllib.error
+
+def ha_proxy(path, method='GET', body=None, token=None):
+    url = HA_URL + path
+    tok = token or HA_TOKEN
+    headers = {'Authorization': f'Bearer {tok}', 'Content-Type': 'application/json'}
+    data = body.encode() if isinstance(body, str) else body
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except Exception as e:
+        return 502, json.dumps({'error': str(e)}).encode()
 
 # ── APP COMMANDS ────────────────────────────────────────────────────────────
 # Map command strings (sent from the remote) to what actually runs on Windows.
 # Customize these paths to match your PC setup.
 APP_MAP = {
-    'kodi':    r'C:\Program Files\Kodi\Kodi.exe',
-    'chrome':  r'C:\Program Files\Google\Chrome\Application\chrome.exe',
-    'firefox': r'C:\Program Files\Mozilla Firefox\firefox.exe',
-    'vlc':     r'C:\Program Files\VideoLAN\VLC\vlc.exe',
+    'kodi':    r'C:\\Program Files\\Kodi\\Kodi.exe',
+    'chrome':  r'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'firefox': r'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
+    'vlc':     r'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe',
     # Phone mirror apps — uncomment whichever you use:
-    # 'mirror':  r'C:\Program Files\scrcpy\scrcpy.exe',          # scrcpy (Android)
-    # 'mirror':  r'C:\Program Files\ApowerMirror\ApowerMirror.exe',
-    # 'mirror':  r'C:\Program Files\LonelyScreen\LonelyScreen.exe',  # AirPlay receiver
-    'mirror':  r'C:\Program Files\scrcpy\scrcpy.exe',
-    'steam':   r'C:\Program Files (x86)\Steam\steam.exe',
-    'plex':    r'C:\Program Files\Plex\Plex.exe',
-    'spotify': r'C:\Users\{}\AppData\Roaming\Spotify\Spotify.exe'.format(os.environ.get('USERNAME','')),
+    # 'mirror':  r'C:\\Program Files\\scrcpy\\scrcpy.exe',          # scrcpy (Android)
+    # 'mirror':  r'C:\\Program Files\\ApowerMirror\\ApowerMirror.exe',
+    # 'mirror':  r'C:\\Program Files\\LonelyScreen\\LonelyScreen.exe',  # AirPlay receiver
+    'mirror':  r'C:\\Program Files\\scrcpy\\scrcpy.exe',
+    'steam':   r'C:\\Program Files (x86)\\Steam\\steam.exe',
+    'plex':    r'C:\\Program Files\\Plex\\Plex.exe',
+    'spotify': r'C:\\Users\\{}\\AppData\\Roaming\\Spotify\\Spotify.exe'.format(os.environ.get('USERNAME','')),
 }
 
 # ── KEYBOARD MAP (for key: commands from d-pad) ─────────────────────────────
@@ -76,23 +94,43 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-HA-Token')
         self.end_headers()
 
     def do_GET(self):
         if self.path == '/ping':
             self.send_json(200, {'status': 'ok', 'agent': 'movie-room-pc-agent', 'version': '1.0'})
+        elif self.path.startswith('/ha/'):
+            tok = self.headers.get('X-HA-Token', '')
+            status, body = ha_proxy(self.path[3:], 'GET', token=tok)
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self.send_json(404, {'error': 'not found'})
 
     def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        raw = self.rfile.read(length)
+
+        if self.path.startswith('/ha/'):
+            tok = self.headers.get('X-HA-Token', '')
+            status, body = ha_proxy(self.path[3:], 'POST', raw.decode(), token=tok)
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if self.path != '/run':
             self.send_json(404, {'error': 'not found'})
             return
 
-        length = int(self.headers.get('Content-Length', 0))
         try:
-            body = json.loads(self.rfile.read(length))
+            body = json.loads(raw)
             command = body.get('command', '').strip()
         except Exception:
             self.send_json(400, {'error': 'invalid json'})
@@ -179,7 +217,7 @@ def main():
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print('\n[Agent] Stopped.')
+        print('\\n[Agent] Stopped.')
         server.shutdown()
 
 
